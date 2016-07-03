@@ -7,6 +7,7 @@ import fr.xephi.authme.cache.auth.PlayerAuth;
 import fr.xephi.authme.cache.auth.PlayerCache;
 import fr.xephi.authme.cache.limbo.LimboCache;
 import fr.xephi.authme.datasource.DataSource;
+import fr.xephi.authme.events.LoadCompleteEvent;
 import fr.xephi.authme.events.ProtectInventoryEvent;
 import fr.xephi.authme.hooks.PluginHooks;
 import fr.xephi.authme.listener.protocollib.ProtocolLibService;
@@ -129,6 +130,28 @@ public class AsynchronousJoin implements AsynchronousProcess {
             teleportationService.teleportOnJoin(player);
             limboCache.updateLimboPlayer(player);
 
+            // Session logic
+            if (service.getProperty(PluginSettings.SESSIONS_ENABLED) && (sessionManager.hasSession(name) || database.isLogged(name))) {
+                sessionManager.cancelSession(name);
+
+                PlayerAuth auth = database.getAuth(name);
+                database.setUnlogged(name);
+                playerCache.removePlayer(name);
+                if (auth != null && auth.getIp().equals(ip)) {
+                    service.send(player, MessageKey.SESSION_RECONNECTION);
+
+                    LoadCompleteEvent completeEvent = new LoadCompleteEvent(player, true, true);
+                    bukkitService.callEvent(completeEvent);
+                    if (!completeEvent.isCancelled()) {
+                        plugin.getManagement().performLogin(player, "dontneed", true);
+                    }
+                    
+                    return;
+                } else if (service.getProperty(PluginSettings.SESSIONS_EXPIRE_ON_IP_CHANGE)) {
+                    service.send(player, MessageKey.SESSION_EXPIRED);
+                }
+            }
+
             // Protect inventory
             if (service.getProperty(PROTECT_INVENTORY_BEFORE_LOGIN)) {
                 ProtectInventoryEvent ev = new ProtectInventoryEvent(player);
@@ -140,22 +163,6 @@ public class AsynchronousJoin implements AsynchronousProcess {
                     }
                 }
             }
-
-            // Session logic
-            if (service.getProperty(PluginSettings.SESSIONS_ENABLED) && (sessionManager.hasSession(name) || database.isLogged(name))) {
-                sessionManager.cancelSession(name);
-
-                PlayerAuth auth = database.getAuth(name);
-                database.setUnlogged(name);
-                playerCache.removePlayer(name);
-                if (auth != null && auth.getIp().equals(ip)) {
-                    service.send(player, MessageKey.SESSION_RECONNECTION);
-                    plugin.getManagement().performLogin(player, "dontneed", true);
-                    return;
-                } else if (service.getProperty(PluginSettings.SESSIONS_EXPIRE_ON_IP_CHANGE)) {
-                    service.send(player, MessageKey.SESSION_EXPIRED);
-                }
-            }
         } else {
             // Not Registered
 
@@ -164,6 +171,8 @@ public class AsynchronousJoin implements AsynchronousProcess {
 
             // Skip if registration is optional
             if (!service.getProperty(RegistrationSettings.FORCE)) {
+                LoadCompleteEvent completeEvent = new LoadCompleteEvent(player, false, false);
+                bukkitService.callEvent(completeEvent);
                 return;
             }
 
@@ -199,9 +208,13 @@ public class AsynchronousJoin implements AsynchronousProcess {
 
         });
 
-        // Timeout and message task
-        limboPlayerTaskManager.registerTimeoutTask(player);
-        limboPlayerTaskManager.registerMessageTask(name, isAuthAvailable);
+        LoadCompleteEvent completeEvent = new LoadCompleteEvent(player, isAuthAvailable, false);
+        bukkitService.callEvent(completeEvent);
+        if (!completeEvent.isCancelled()) {
+            // Timeout and message task
+            limboPlayerTaskManager.registerTimeoutTask(player);
+            limboPlayerTaskManager.registerMessageTask(name, isAuthAvailable);
+        }
     }
 
     private boolean isPlayerUnrestricted(String name) {
