@@ -41,7 +41,6 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerShearEntityEvent;
 
 import javax.inject.Inject;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -107,13 +106,7 @@ public class PlayerListener implements Listener {
             m.send(player, MessageKey.DENIED_CHAT);
         } else if (settings.getProperty(RestrictionSettings.HIDE_CHAT)) {
             Set<Player> recipients = event.getRecipients();
-            Iterator<Player> iter = recipients.iterator();
-            while (iter.hasNext()) {
-                Player p = iter.next();
-                if (listenerService.shouldCancelEvent(p)) {
-                    iter.remove();
-                }
-            }
+            recipients.removeIf(p -> listenerService.shouldCancelEvent(p));
             if (recipients.isEmpty()) {
                 event.setCancelled(true);
             }

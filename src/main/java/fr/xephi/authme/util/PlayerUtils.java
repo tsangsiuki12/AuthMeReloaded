@@ -3,10 +3,16 @@ package fr.xephi.authme.util;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * Player utilities.
  */
 public class PlayerUtils {
+    public static final Map<String, String> IP_CACHE = new ConcurrentHashMap<>();
 
     // Utility class
     private PlayerUtils() {
@@ -37,6 +43,23 @@ public class PlayerUtils {
      * @return The player's IP address
      */
     public static String getPlayerIp(Player p) {
-        return p.getAddress().getAddress().getHostAddress();
+        String key = getUUIDorName(p).toLowerCase();
+        if (IP_CACHE.containsKey(key)) {
+            return IP_CACHE.get(key);
+        }
+        InetAddress inetAddress = p.getAddress().getAddress();
+        if (inetAddress == null) {
+            // address is null, could probably happen when it get called async
+            // in that case, we try to resolve the address again in the current thread
+            String host = p.getAddress().getHostString();
+            try {
+                inetAddress = InetAddress.getByName(p.getAddress().getHostString());
+            } catch (UnknownHostException e) {
+                // should never happen, better than returning null
+                return host;
+            }
+        }
+        IP_CACHE.put(key, inetAddress.getHostAddress());
+        return inetAddress.getHostAddress();
     }
 }

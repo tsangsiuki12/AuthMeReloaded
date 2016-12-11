@@ -7,12 +7,12 @@ import fr.xephi.authme.data.auth.PlayerCache;
 import fr.xephi.authme.datasource.CacheDataSource;
 import fr.xephi.authme.datasource.DataSource;
 import fr.xephi.authme.process.AsynchronousProcess;
-import fr.xephi.authme.service.CommonService;
 import fr.xephi.authme.process.SyncProcessManager;
+import fr.xephi.authme.service.CommonService;
+import fr.xephi.authme.service.ValidationService;
 import fr.xephi.authme.settings.SpawnLoader;
 import fr.xephi.authme.settings.properties.RestrictionSettings;
 import fr.xephi.authme.util.PlayerUtils;
-import fr.xephi.authme.service.ValidationService;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
@@ -88,6 +88,7 @@ public class AsynchronousQuit implements AsynchronousProcess {
         if (database instanceof CacheDataSource) {
             ((CacheDataSource) database).getCachedAuths().invalidate(name);
         }
+        PlayerUtils.IP_CACHE.remove(PlayerUtils.getUUIDorName(player).toLowerCase());
     }
 
 }
