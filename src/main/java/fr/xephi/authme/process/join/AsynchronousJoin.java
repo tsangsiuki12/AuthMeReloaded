@@ -1,5 +1,6 @@
 package fr.xephi.authme.process.join;
 
+import com.google.common.net.InetAddresses;
 import fr.xephi.authme.AuthMe;
 import fr.xephi.authme.ConsoleLogger;
 import fr.xephi.authme.data.SessionManager;
@@ -8,20 +9,20 @@ import fr.xephi.authme.data.auth.PlayerCache;
 import fr.xephi.authme.data.limbo.LimboCache;
 import fr.xephi.authme.datasource.DataSource;
 import fr.xephi.authme.events.ProtectInventoryEvent;
-import fr.xephi.authme.service.PluginHookService;
 import fr.xephi.authme.message.MessageKey;
 import fr.xephi.authme.permission.AuthGroupType;
 import fr.xephi.authme.permission.PlayerStatePermission;
 import fr.xephi.authme.process.AsynchronousProcess;
-import fr.xephi.authme.service.CommonService;
 import fr.xephi.authme.process.login.AsynchronousLogin;
+import fr.xephi.authme.service.BukkitService;
+import fr.xephi.authme.service.CommonService;
+import fr.xephi.authme.service.PluginHookService;
 import fr.xephi.authme.settings.commandconfig.CommandManager;
 import fr.xephi.authme.settings.properties.HooksSettings;
 import fr.xephi.authme.settings.properties.PluginSettings;
 import fr.xephi.authme.settings.properties.RegistrationSettings;
 import fr.xephi.authme.settings.properties.RestrictionSettings;
 import fr.xephi.authme.task.LimboPlayerTaskManager;
-import fr.xephi.authme.service.BukkitService;
 import fr.xephi.authme.util.PlayerUtils;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
@@ -29,9 +30,10 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
 import javax.inject.Inject;
+import java.net.InetSocketAddress;
 
-import static fr.xephi.authme.settings.properties.RestrictionSettings.PROTECT_INVENTORY_BEFORE_LOGIN;
 import static fr.xephi.authme.service.BukkitService.TICKS_PER_SECOND;
+import static fr.xephi.authme.settings.properties.RestrictionSettings.PROTECT_INVENTORY_BEFORE_LOGIN;
 
 /**
  * Asynchronous process for when a player joins.
@@ -91,14 +93,11 @@ public class AsynchronousJoin implements AsynchronousProcess {
             pluginHookService.setEssentialsSocialSpyStatus(player, false);
         }
 
-        if (isNameRestricted(name, ip, player.getAddress().getHostName())) {
-            bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(new Runnable() {
-                @Override
-                public void run() {
-                    player.kickPlayer(service.retrieveSingleMessage(MessageKey.NOT_OWNER_ERROR));
-                    if (service.getProperty(RestrictionSettings.BAN_UNKNOWN_IP)) {
-                        plugin.getServer().banIP(ip);
-                    }
+        if (isNameRestricted(player.getAddress(), name, ip)) {
+            bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(() -> {
+                player.kickPlayer(service.retrieveSingleMessage(MessageKey.NOT_OWNER_ERROR));
+                if (service.getProperty(RestrictionSettings.BAN_UNKNOWN_IP)) {
+                    plugin.getServer().banIP(ip);
                 }
             });
             return;
@@ -181,14 +180,14 @@ public class AsynchronousJoin implements AsynchronousProcess {
     /**
      * Returns whether the name is restricted based on the restriction settings.
      *
-     * @param name   The name to check
+     * @param socketAddress The player's {@link java.net.InetSocketAddress}
+     * @param name   The player's name to check
      * @param ip     The IP address of the player
-     * @param domain The hostname of the IP address
      *
      * @return True if the name is restricted (IP/domain is not allowed for the given name),
      * false if the restrictions are met or if the name has no restrictions to it
      */
-    private boolean isNameRestricted(String name, String ip, String domain) {
+    private boolean isNameRestricted(InetSocketAddress socketAddress, String name, String ip) {
         if (!service.getProperty(RestrictionSettings.ENABLE_RESTRICTED_USERS)) {
             return false;
         }
@@ -200,7 +199,10 @@ public class AsynchronousJoin implements AsynchronousProcess {
             String testIp = args[1];
             if (testName.equalsIgnoreCase(name)) {
                 nameFound = true;
-                if ((ip != null && testIp.equals(ip)) || (domain != null && testIp.equalsIgnoreCase(domain))) {
+                if (!InetAddresses.isInetAddress(testIp)) {
+                    ip = socketAddress.getHostName();
+                }
+                if ((ip != null && testIp.equalsIgnoreCase(ip))) {
                     return false;
                 }
             }
